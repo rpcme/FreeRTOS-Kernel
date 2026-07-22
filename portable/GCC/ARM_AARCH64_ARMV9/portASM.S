@@ -26,6 +26,31 @@
  *
  */
 
+/*
+ * FreeRTOSConfig.h must be visible to the assembler preprocessor so
+ * that the configARMV9_PAC, configARMV9_PAC_FRAME, configARMV9_SVE2
+ * and configARMV9_TASK_VL guards in this file evaluate correctly.
+ * Without this include, all guarded #if blocks silently expand to
+ * false (undefined identifier compares equal to 0), so the
+ * PAC/SVE2/PAC_FRAME/TASK_VL context save+restore code is omitted
+ * even when the C-side (port.c, which does include FreeRTOSConfig.h)
+ * has pushed the matching state onto the task stack. The mismatch
+ * corrupts task startup.
+ *
+ * Downstream projects that use configXxx settings that expand to
+ * C-only content (extern declarations, function-like macros using
+ * do {...} while, etc.) must guard those with:
+ *
+ *     #ifndef __ASSEMBLER__
+ *     ...C-only stuff...
+ *     #endif
+ *
+ * __ASSEMBLER__ is a predefined macro set to 1 by GCC's cpp when
+ * preprocessing a .S file. This is the standard Linux-kernel idiom
+ * for headers that need to be usable from both C and assembly.
+ */
+#include "FreeRTOSConfig.h"
+
     .text
 
     /* Variables and functions. */
