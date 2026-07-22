@@ -462,10 +462,18 @@ FreeRTOS_Abort:
 .type vPortRestoreTaskContext, %function
 vPortRestoreTaskContext:
     bti     c
-.set freertos_vector_base,  _freertos_vector_table
 
-    /* Install the FreeRTOS interrupt handlers. */
-    LDR     X1, =freertos_vector_base
+    /*
+     * Install the FreeRTOS interrupt handlers.
+     *
+     * Uses ADRP + ADD (link-time PC-relative address computation) instead
+     * of `LDR X1, =_freertos_vector_table`, which would generate a
+     * pointer literal in the current section. See the comment on the
+     * .dword pool at the bottom of this file for why we avoid runtime
+     * pointer literals in .text on strict-W^X loaders.
+     */
+    ADRP    X1, _freertos_vector_table
+    ADD     X1, X1, #:lo12:_freertos_vector_table
 #if defined( GUEST )
     MSR     VBAR_EL1, X1
 #else
@@ -806,6 +814,25 @@ vApplicationIRQHandler:
     RET
 
 .align 8
+/*
+ * Pointer-literal pool for `LDR Xn, <label>` PC-relative loads.
+ *
+ * These .dword entries hold PIC-relocatable pointer values — they
+ * need R_AARCH64_RELATIVE fixups applied at load time (the loader
+ * writes ImageBase + addend into each slot). This means the section
+ * they live in must be WRITABLE at load time.
+ *
+ * Historically these were placed in .text (the default section for
+ * this file). That works on ELF-with-TEXTREL loaders which
+ * temporarily mark .text writable during relocation, but fails on
+ * strict-W^X loaders (PE/UEFI implementations that enforce W^X on
+ * the loaded image, such as edk2-nvidia). Placing the pool in .data
+ * avoids this incompatibility without any downside: `LDR literal`
+ * has ±1 MB range, and .data is well within that reach in all
+ * realistic port link maps.
+ */
+.pushsection .data,"aw"
+.align 8
 pxCurrentTCBConst: .dword pxCurrentTCB
 ullCriticalNestingConst: .dword ullCriticalNesting
 ullPortTaskHasFPUContextConst: .dword ullPortTaskHasFPUContext
@@ -813,5 +840,6 @@ ullPortTaskHasFPUContextConst: .dword ullPortTaskHasFPUContext
 ullMaxAPIPriorityMaskConst: .dword ullMaxAPIPriorityMask
 ullPortInterruptNestingConst: .dword ullPortInterruptNesting
 ullPortYieldRequiredConst: .dword ullPortYieldRequired
+.popsection
 
 .end
